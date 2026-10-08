@@ -1,0 +1,70 @@
+{% from "_icons.html" import icon, stock_badge %}
+{% set region_name = region_obj.name if region_obj else region %}
+
+<div class="region-hero">
+  <div>
+    <h2>{{ region_name }}</h2>
+    <div class="meta">
+      <code>{{ region }}</code>
+      <span>{{ region_obj.country if region_obj else 'Global' }}</span>
+      {% if region_obj and not region_obj.available %}
+        <span class="badge no">区域缺货</span>
+      {% else %}
+        <span class="badge ok"><i class="dot"></i>区域在线</span>
+      {% endif %}
+    </div>
+  </div>
+  <label class="choice" title="监控该区域全部规格，包括后续新上线的规格">
+    <input type="checkbox" data-pick value="{{ region }}|*" data-label="{{ region_name }} · 整区">
+    <span>整区监控（含新规格）</span>
+  </label>
+</div>
+
+{% if categories %}
+<nav class="tabs">
+  {% for c in categories %}
+  <a class="tab{{ ' active' if c.name == active }}"
+     hx-get="/catalog/r/{{ region }}?cat={{ c.name|urlencode }}" hx-target="#region-detail" hx-swap="innerHTML">
+    {{ c.name }} <span class="n{{ ' has' if c.avail > 0 }}">{{ c.avail }}/{{ c.count }}</span>
+  </a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% if plans %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th class="check"><input type="checkbox" id="pick-all" title="全选当前分类"></th>
+        <th>规格</th>
+        <th class="num">vCPU</th>
+        <th class="num">内存</th>
+        <th class="num">存储</th>
+        <th class="num">流量</th>
+        <th class="num">月付</th>
+        <th>库存</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for p in plans %}
+      <tr>
+        <td class="check"><input type="checkbox" data-pick value="{{ p.region }}|{{ p.slug }}" data-label="{{ region_name }} · {{ p.name }}"></td>
+        <td>
+          <div class="strong">{{ p.name }}</div>
+          <div class="dim mono" style="font-size:.74rem">{{ p.slug }}{% if p.nvme %} · NVMe{% endif %}</div>
+        </td>
+        <td class="num mono">{{ p.vcores }}</td>
+        <td class="num mono">{{ p.memory|mem }}</td>
+        <td class="num mono">{{ p.disk|gb }}</td>
+        <td class="num mono">{{ p.transfer|tf }}</td>
+        <td class="num"><span class="price">${{ '%.0f'|format(p.price_monthly) }}<small>/月</small></span></td>
+        <td>{{ stock_badge(p.available) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty"><p>该区域暂无套餐</p></div>
+{% endif %}

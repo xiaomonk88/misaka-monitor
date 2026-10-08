@@ -1,0 +1,15 @@
+.venv/
+data/
+__pycache__/
+*.pyc
+.git/
+.github/
+.claude/
+.env
+cookies.txt
+*.log
+*.md
+install.sh
+docker-compose*.yml
+.dockerignore
+Dockerfile

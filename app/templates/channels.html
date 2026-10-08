@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}通知渠道{% endblock %}
+{% macro mask(t) %}{% if t %}••••{{ t[-6:] }}{% else %}未设置{% endif %}{% endmacro %}
+
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>通知渠道</h1>
+    <p class="sub">任务命中事件后，通过以下 Telegram Bot 推送消息</p>
+  </div>
+</div>
+
+<div class="split">
+  <section>
+    {% if not channels %}
+    <div class="card">
+      <div class="empty">
+        <div class="empty-icon">{{ icon('channels', 22) }}</div>
+        <h3>还没有通知渠道</h3>
+        <p>在右侧填写 Bot Token 与 Chat ID，添加你的第一个推送机器人。</p>
+      </div>
+    </div>
+    {% else %}
+    <div class="channel-list">
+      {% for ch in channels %}
+      <div class="card">
+        <div class="channel-row">
+          <span class="channel-ico">{{ icon('channels', 18) }}</span>
+          <div class="channel-main">
+            <div class="name">
+              {{ ch.name }}
+              {% if ch.enabled %}<span class="badge ok"><i class="dot"></i>启用</span>{% else %}<span class="badge">已停用</span>{% endif %}
+            </div>
+            <div class="meta">
+              <span>Chat ID <code>{{ ch.chat_id or '未设置' }}</code></span>
+              <span>Token <code>{{ mask(ch.bot_token) }}</code></span>
+            </div>
+          </div>
+          <div class="actions">
+            <form method="post" action="/channels/{{ ch.id }}/test" class="inline">
+              <button class="btn btn-sm" type="submit" title="发送一条测试消息" data-loading-text="发送中…">{{ icon('channels', 13) }}<span>测试</span></button>
+            </form>
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" title="编辑" onclick="var p=document.getElementById('edit-{{ ch.id }}');p.hidden=!p.hidden;if(!p.hidden)p.querySelector('input').focus()">{{ icon('edit', 15) }}</button>
+            <form method="post" action="/channels/{{ ch.id }}/delete" class="inline" data-confirm="确定删除渠道「{{ ch.name }}」？">
+              <button class="btn btn-danger-ghost btn-sm btn-icon" type="submit" title="删除">{{ icon('trash', 15) }}</button>
+            </form>
+          </div>
+        </div>
+
+        <form method="post" action="/channels/{{ ch.id }}/update" class="channel-edit" id="edit-{{ ch.id }}" hidden>
+          <div class="fields">
+            <div>
+              <label>渠道名称<span class="req">*</span></label>
+              <input type="text" name="name" value="{{ ch.name }}" required>
+            </div>
+            <div>
+              <label>Chat ID</label>
+              <input type="text" name="chat_id" value="{{ ch.chat_id }}">
+            </div>
+          </div>
+          <div class="field" style="margin-top:1.1rem">
+            <label>Bot Token</label>
+            <input type="text" name="bot_token" placeholder="留空则保持不变" autocomplete="off">
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-top:1.1rem;flex-wrap:wrap">
+            <label class="switch">
+              <input type="checkbox" name="enabled" {{ 'checked' if ch.enabled }}>
+              <span class="track"></span><span>启用此渠道</span>
+            </label>
+            <div class="actions">
+              <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('form').hidden=true">取消</button>
+              <button type="submit" class="btn btn-primary btn-sm"><span>保存</span></button>
+            </div>
+          </div>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+  <aside>
+    <div class="card">
+      <div class="card-head"><h2>添加 Telegram 渠道</h2></div>
+      <form method="post" action="/channels" class="card-body">
+        <div class="field">
+          <label for="ch_name">渠道名称<span class="req">*</span></label>
+          <input type="text" id="ch_name" name="name" placeholder="如：个人私信 / 抢货群" required {{ 'autofocus' if not channels }}>
+        </div>
+        <div class="field">
+          <label for="ch_token">Bot Token</label>
+          <input type="text" id="ch_token" name="bot_token" placeholder="123456:ABC-DEF…" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="ch_chat_id">Chat ID</label>
+          <input type="text" id="ch_chat_id" name="chat_id" placeholder="123456789 或 -100…">
+        </div>
+        <div class="field" style="margin-top:1.4rem">
+          <button type="submit" class="btn btn-primary btn-block">{{ icon('plus', 15) }}<span>添加渠道</span></button>
+        </div>
+      </form>
+      <div class="card-foot" style="display:block">
+        <ol class="guide">
+          <li><b>创建机器人</b>在 Telegram 找 <code>@BotFather</code> 发送 <code>/newbot</code>，获得 Bot Token。</li>
+          <li><b>获取 Chat ID</b>私聊 <code>@userinfobot</code> 获取个人 ID；群组需先把 Bot 拉进群。</li>
+          <li><b>激活并测试</b>先给 Bot 发一条 <code>/start</code>，再回到这里点击「测试」。</li>
+        </ol>
+      </div>
+    </div>
+  </aside>
+</div>
+
+{% endblock %}

@@ -1,0 +1,9 @@
+# 从源码本地构建（不拉取 ghcr.io 镜像）：
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  misaka-monitor:
+    image: misaka-monitor:local
+    build:
+      context: .
+      args:
+        VERSION: local

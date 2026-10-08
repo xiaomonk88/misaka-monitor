@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, event_badge %}
+{% block title %}仪表盘{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>概览</h1>
+    <p class="sub">
+      {% if stats.tasks_on %}{{ stats.tasks_on }} 个任务正在后台轮询{% else %}当前没有运行中的监控任务{% endif %}
+      · 目录同步于 {{ last_sync|dt('%m-%d %H:%M') if last_sync else '—' }}
+    </p>
+  </div>
+  <div class="actions">
+    <a href="/catalog" class="btn">{{ icon('catalog', 15) }}<span>产品目录</span></a>
+    <a href="/catalog" class="btn btn-primary">{{ icon('plus', 15) }}<span>新建监控</span></a>
+  </div>
+</div>
+
+{% set step_catalog = stats.plans > 0 %}
+{% set step_channel = stats.channels > 0 %}
+{% set step_task = stats.tasks > 0 %}
+{% if not (step_catalog and step_channel and step_task) %}
+<div class="card" style="margin-bottom:1.25rem">
+  <div class="card-head">
+    <div>
+      <h2>三步开始监控</h2>
+      <div class="sub">完成以下步骤后，补货消息会自动推送到 Telegram</div>
+    </div>
+  </div>
+  <div class="onboard">
+    <a class="step{{ ' done' if step_catalog }}" href="/catalog">
+      <span class="step-num">{{ icon('check', 14) if step_catalog else '1' }}</span>
+      <div><div class="step-title">同步产品目录</div><div class="step-desc">从 Misaka 拉取全部区域与套餐</div></div>
+    </a>
+    <a class="step{{ ' done' if step_channel }}" href="/channels">
+      <span class="step-num">{{ icon('check', 14) if step_channel else '2' }}</span>
+      <div><div class="step-title">添加通知渠道</div><div class="step-desc">绑定 Telegram Bot 与 Chat ID</div></div>
+    </a>
+    <a class="step{{ ' done' if step_task }}" href="/catalog">
+      <span class="step-num">{{ icon('check', 14) if step_task else '3' }}</span>
+      <div><div class="step-title">创建监控任务</div><div class="step-desc">在目录中勾选套餐，一键创建</div></div>
+    </a>
+  </div>
+</div>
+{% endif %}
+
+<div class="stats">
+  <a class="card stat" href="/tasks" style="color:inherit">
+    <div class="stat-label">{{ icon('activity', 15) }}运行中任务</div>
+    <div class="stat-value">{{ stats.tasks_on }}<span class="of"> / {{ stats.tasks }}</span></div>
+    <div class="stat-foot">{% if stats.tasks %}{{ stats.tasks - stats.tasks_on }} 个已停用{% else %}尚未创建任务{% endif %}</div>
+  </a>
+  <a class="card stat" href="/catalog" style="color:inherit">
+    <div class="stat-label">{{ icon('box', 15) }}有货套餐</div>
+    <div class="stat-value">{{ stats.plans_avail }}<span class="of"> / {{ stats.plans }}</span></div>
+    {% if stats.plans %}
+      {% set pct = (stats.plans_avail / stats.plans) * 100 %}
+      <div class="meter"><span style="width:{{ '%.1f'|format(pct) }}%"></span></div>
+      <div class="stat-foot">在售率 {{ '%.1f'|format(pct) }}%</div>
+    {% else %}
+      <div class="stat-foot">尚未同步目录</div>
+    {% endif %}
+  </a>
+  <a class="card stat" href="/channels" style="color:inherit">
+    <div class="stat-label">{{ icon('channels', 15) }}通知渠道</div>
+    <div class="stat-value">{{ stats.channels }}</div>
+    <div class="stat-foot">Telegram Bot</div>
+  </a>
+  <a class="card stat" href="/logs?src=task" style="color:inherit">
+    <div class="stat-label">{{ icon('zap', 15) }}监控事件</div>
+    <div class="stat-value">{{ stats.events }}</div>
+    <div class="stat-foot">另有同步日志 {{ stats.sync_events }} 条</div>
+  </a>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>最新监控事件</h2>
+    <a href="/logs?src=task" class="btn btn-ghost btn-sm"><span>全部日志</span>{{ icon('chevron-right', 14) }}</a>
+  </div>
+  {% if recent %}
+  <ul class="feed">
+    {% for e in recent %}
+    <li>
+      <div>{{ event_badge(e.type, label(e.type)) }}</div>
+      <div class="what">
+        <div class="target"><code>{{ e.region }}</code>{% if e.plan_slug %} <span class="mono">{{ e.plan_slug }}</span>{% endif %}</div>
+        <div class="detail" title="{{ e.detail }}">{{ task_names.get(e.task_id, '已删除的任务') }} · {{ e.detail }}</div>
+      </div>
+      <time>{{ e.ts|dt('%m-%d %H:%M:%S') }}</time>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">
+    <div class="empty-icon">{{ icon('clock', 22) }}</div>
+    <h3>暂无监控事件</h3>
+    <p>启用的监控任务检测到补货、售罄等变化后，会在这里实时出现。{% if stats.sync_events %}目录同步的变化请查看 <a href="/logs?src=sync">同步日志</a>。{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

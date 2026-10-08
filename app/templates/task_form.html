@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, stock_badge %}
+{% set editing = mode == 'edit' %}
+{% block title %}{{ '编辑' if editing else '新建' }}监控任务{% endblock %}
+{% block content %}
+
+{# 新建时根据目标自动拟一个任务名 #}
+{% set suggested -%}
+  {%- if targets -%}
+    {%- set t0 = targets[0] -%}
+    {%- if t0.region == '*' -%}全站上新监控
+    {%- elif t0.slug == '*' -%}{{ t0.region }} 整区
+    {%- else -%}{{ t0.region }} {{ t0.name }}{%- endif -%}
+    {%- if targets|length > 1 %} 等 {{ targets|length }} 项{% endif -%}
+  {%- endif -%}
+{%- endset %}
+
+<a href="/tasks" class="back-link">{{ icon('arrow-left', 14) }}监控任务</a>
+<div class="page-head">
+  <div>
+    <h1>{{ '编辑任务' if editing else '新建监控任务' }}</h1>
+    <p class="sub">{{ '修改后立即按新配置重新调度' if editing else '保存后任务立即启动，并按设定周期轮询' }}</p>
+  </div>
+</div>
+
+<form method="post" action="{{ '/tasks/' ~ task.id ~ '/update' if editing else '/tasks/create' }}" id="task-form">
+<div class="form-layout">
+  <div class="form-main">
+
+    <div class="card">
+      <div class="card-head"><h2>基本信息</h2></div>
+      <div class="card-body">
+        <div class="fields">
+          <div>
+            <label for="name">任务名称<span class="req">*</span></label>
+            <input type="text" id="name" name="name" value="{{ task.name if task else suggested }}" placeholder="如：伦敦 2C4G 补货" required {{ 'autofocus' if not editing }}>
+            <small>显示在任务列表与 Telegram 通知标题中</small>
+          </div>
+          <div>
+            <label for="interval_seconds">轮询周期（秒）<span class="req">*</span></label>
+            <input type="number" id="interval_seconds" name="interval_seconds" min="5" value="{{ default_interval }}" required>
+            <div class="chips" id="interval-chips">
+              {% for v in [30, 60, 120, 300] %}<button type="button" class="chip" data-v="{{ v }}">{{ v }}s</button>{% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>监控目标 <span class="dim" id="target-count">{{ targets|length }}</span></h2>
+          <div class="sub">单个套餐、整个区域（region|*）或全站（*|*）</div>
+        </div>
+        <a href="/catalog" class="btn btn-sm">{{ icon('catalog', 14) }}<span>从目录挑选</span></a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:110px">区域</th><th>套餐</th><th style="width:100px">库存</th><th style="width:52px"></th></tr></thead>
+          <tbody id="target-body">
+          {% for t in targets %}
+            <tr class="target-row">
+              <td><code>{{ t.region }}</code></td>
+              <td>
+                <span class="strong">{{ t.name }}</span>
+                {% if t.slug != '*' %}<span class="dim mono" style="font-size:.74rem;margin-left:.35rem">{{ t.slug }}</span>{% endif %}
+                {% if t.plan %}
+                <div class="muted" style="font-size:.76rem;margin-top:.1rem">
+                  {{ t.plan.vcores }}C · {{ t.plan.memory|mem }} · {{ t.plan.disk|gb }} · 流量 {{ t.plan.transfer|tf }} · <span class="strong">${{ '%.0f'|format(t.plan.price_monthly) }}</span>/月
+                </div>
+                {% elif t.slug != '*' and t.region != '*' %}
+                <div class="muted" style="font-size:.76rem;margin-top:.1rem">目录中未收录（可能已下架）</div>
+                {% endif %}
+                <input type="hidden" name="target" value="{{ t.region }}|{{ t.slug }}">
+              </td>
+              <td>{{ stock_badge(t.available, '—') }}</td>
+              <td><button type="button" class="btn btn-danger-ghost btn-sm btn-icon" data-remove title="移除">{{ icon('x', 14) }}</button></td>
+            </tr>
+          {% endfor %}
+            <tr id="target-empty" {{ 'hidden' if targets }}>
+              <td colspan="4" class="muted" style="text-align:center;padding:2rem 1rem">
+                暂无目标 — 从 <a href="/catalog">产品目录</a> 勾选，或在下方手动添加
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="add-target">
+        <input type="text" id="add-region" placeholder="区域代码，如 HKG 或 *" style="max-width:200px">
+        <input type="text" id="add-slug" placeholder="套餐 slug（留空 = 整区）">
+        <button type="button" class="btn btn-sm" id="add-btn" style="height:34px">{{ icon('plus', 14) }}<span>添加</span></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>订阅事件</h2>
+        <div class="actions">
+          <button type="button" class="link-btn" data-events="stock">仅库存</button>
+          <span class="dim">/</span>
+          <button type="button" class="link-btn" data-events="all">全选</button>
+        </div>
+      </div>
+      <div class="card-body">
+        {% set stock_keys = ['restock', 'sold_out'] %}
+        <div class="group-label">库存变化</div>
+        <div class="choice-grid">
+          {% for key, lbl in event_options if key in stock_keys %}
+          <label class="choice"><input type="checkbox" name="event_types" value="{{ key }}" data-stock {{ 'checked' if key in selected_events }}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+        <div class="group-label">目录变化</div>
+        <div class="choice-grid">
+          {% for key, lbl in event_options if key not in stock_keys %}
+          <label class="choice"><input type="checkbox" name="event_types" value="{{ key }}" {{ 'checked' if key in selected_events }}><span>{{ lbl }}</span></label>
+          {% endfor %}
+        </div>
+        <small style="margin-top:.9rem">都不勾选时默认订阅「补货 + 售罄」</small>
+      </div>
+    </div>
+  </div>
+
+  <aside class="form-side">
+    <div class="card">
+      <div class="card-head">
+        <h2>通知渠道</h2>
+        <a href="/channels" class="btn btn-ghost btn-sm">管理</a>
+      </div>
+      <div class="card-body">
+        {% if channels %}
+        <div style="display:flex;flex-direction:column;gap:.5rem">
+          {% for ch in channels %}
+          <label class="choice">
+            <input type="checkbox" name="channel_ids" value="{{ ch.id }}" {{ 'checked' if ch.id in selected_channels or (not editing and channels|length == 1) }}>
+            <span>{{ ch.name }}</span>
+            <span class="meta">{% if not ch.enabled %}<span class="badge">已停用</span>{% else %}<span class="badge info">{{ ch.type }}</span>{% endif %}</span>
+          </label>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted" style="font-size:.84rem">还没有通知渠道，任务只会记录事件、不会推送。</p>
+        <a href="/channels" class="btn btn-sm" style="margin-top:.75rem">{{ icon('plus', 14) }}<span>添加 Telegram 渠道</span></a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <label class="switch">
+          <input type="checkbox" name="auto_order" {{ 'checked' if task and task.auto_order }}>
+          <span class="track"></span>
+          <span>补货时尝试自动下单</span>
+        </label>
+        <small>实验功能，目前仅在通知中标注「自动下单就绪」，不会真实下单或扣款。</small>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <ul class="summary-list">
+          <li><span>监控目标</span><b id="sum-targets">{{ targets|length }} 个</b></li>
+          <li><span>轮询周期</span><b id="sum-interval">{{ default_interval }} 秒</b></li>
+        </ul>
+        <button type="submit" class="btn btn-primary btn-lg btn-block" id="submit-btn" style="margin-top:1rem">
+          {{ icon('check', 16) }}<span>{{ '保存修改' if editing else '创建并启动' }}</span>
+        </button>
+        <small id="submit-hint" style="text-align:center" {{ 'hidden' if targets }}>至少需要一个监控目标</small>
+        <a href="/tasks" class="btn btn-ghost btn-block" style="margin-top:.5rem">取消</a>
+      </div>
+    </div>
+  </aside>
+</div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('task-form');
+  var body = document.getElementById('target-body');
+  var interval = document.getElementById('interval_seconds');
+
+  // 自动拟定的名称：用户未手动修改前，随目标数量更新「等 N 项」
+  var nameInput = document.getElementById('name'), autoName = {{ 'false' if editing else 'true' }} && nameInput.value !== '';
+  nameInput.addEventListener('input', function () { autoName = false; });
+
+  function refresh() {
+    var n = body.querySelectorAll('input[name=target]').length;
+    if (autoName && n > 0) {
+      var base = nameInput.value.replace(/ 等 \d+ 项$/, '');
+      nameInput.value = n > 1 ? base + ' 等 ' + n + ' 项' : base;
+    }
+    document.getElementById('target-count').textContent = n;
+    document.getElementById('sum-targets').textContent = n + ' 个';
+    document.getElementById('target-empty').hidden = n > 0;
+    document.getElementById('submit-hint').hidden = n > 0;
+    document.getElementById('submit-btn').disabled = n === 0;
+  }
+
+  // 移除目标
+  body.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-remove]');
+    if (b) { b.closest('tr').remove(); refresh(); }
+  });
+
+  // 手动添加目标
+  var reg = document.getElementById('add-region'), slug = document.getElementById('add-slug');
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function addTarget() {
+    var r = reg.value.trim().toUpperCase(), s = slug.value.trim() || '*';
+    if (!r) { reg.focus(); return; }
+    if (r === '*') s = '*';
+    var v = r + '|' + s;
+    if (body.querySelector('input[name=target][value="' + CSS.escape(v) + '"]')) { reg.value = slug.value = ''; return; }
+    var name = r === '*' ? '全站通配' : (s === '*' ? '（整个区域所有规格）' : s);
+    var tr = document.createElement('tr');
+    tr.className = 'target-row';
+    tr.innerHTML = '<td><code>' + esc(r) + '</code></td><td><span class="strong">' + esc(name) + '</span>'
+      + '<input type="hidden" name="target"></td><td><span class="badge">—</span></td>'
+      + '<td><button type="button" class="btn btn-danger-ghost btn-sm btn-icon" data-remove title="移除">×</button></td>';
+    tr.querySelector('input').value = v;
+    body.insertBefore(tr, document.getElementById('target-empty'));
+    reg.value = slug.value = ''; reg.focus();
+    refresh();
+  }
+  document.getElementById('add-btn').addEventListener('click', addTarget);
+  [reg, slug].forEach(function (i) {
+    i.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addTarget(); } });
+  });
+
+  // 轮询周期快捷值
+  var chips = document.querySelectorAll('#interval-chips .chip');
+  function syncChips() {
+    chips.forEach(function (c) { c.classList.toggle('active', c.dataset.v === interval.value); });
+    document.getElementById('sum-interval').textContent = (interval.value || '—') + ' 秒';
+  }
+  chips.forEach(function (c) { c.addEventListener('click', function () { interval.value = c.dataset.v; syncChips(); }); });
+  interval.addEventListener('input', syncChips);
+  syncChips();
+
+  // 事件快捷选择
+  document.querySelectorAll('[data-events]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var all = b.dataset.events === 'all';
+      form.querySelectorAll('input[name=event_types]').forEach(function (c) { c.checked = all || c.hasAttribute('data-stock'); });
+    });
+  });
+
+  {% if not editing %}
+  // 创建成功后清空目录页的已选集合
+  form.addEventListener('submit', function () { sessionStorage.removeItem('misaka-picks'); });
+  {% endif %}
+  refresh();
+})();
+</script>
+{% endblock %}

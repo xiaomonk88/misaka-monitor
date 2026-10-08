@@ -1,0 +1,116 @@
+{% from "_icons.html" import icon %}
+{% set nav = nav if nav is defined else true %}
+{% set shownav = nav and user %}
+{% set cur = request.url.path %}
+
+{% macro navlink(href, label, icon_name) %}
+  {% set active = (cur == href) if href == '/' else cur.startswith(href) %}
+  <a href="{{ href }}" class="nav-item{{ ' active' if active }}" title="{{ label }}">
+    {{ icon(icon_name, 18) }}<span>{{ label }}</span>
+  </a>
+{% endmacro %}
+
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Misaka 监控{% endblock %} · Misaka 补货监控</title>
+  <script>
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('misaka-theme') || 'light');
+  </script>
+  <link rel="stylesheet" href="/static/custom.css?v={{ app_version }}">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+
+{% if flash %}
+<div class="toasts" id="toasts">
+  <div class="toast {{ flash_type or 'info' }}" role="status" data-ttl="{{ 9000 if flash_type == 'error' else 5000 }}">
+    {{ icon('check' if flash_type == 'success' else ('alert' if flash_type == 'error' else 'info'), 18) }}
+    <div class="msg">{{ flash }}</div>
+    <button type="button" class="icon-btn" aria-label="关闭" onclick="dismissToast(this.parentElement)">{{ icon('x', 14) }}</button>
+  </div>
+</div>
+{% endif %}
+
+{% if shownav %}
+<div class="shell">
+  <aside class="sidebar">
+    <a href="/" class="brand">
+      <span class="brand-mark">{{ icon('radar', 22) }}</span>
+      <span class="brand-text">
+        <span class="brand-name">Misaka 监控</span>
+      </span>
+    </a>
+
+    <nav class="nav">
+      <div class="nav-label">概览</div>
+      {{ navlink('/', '仪表盘', 'dashboard') }}
+      {{ navlink('/catalog', '产品目录', 'catalog') }}
+      <div class="nav-label">监控</div>
+      {{ navlink('/tasks', '监控任务', 'tasks') }}
+      {{ navlink('/channels', '通知渠道', 'channels') }}
+      <div class="nav-label">系统</div>
+      {{ navlink('/logs', '事件日志', 'logs') }}
+      {{ navlink('/settings', '设置', 'settings') }}
+    </nav>
+
+    <div class="sidebar-foot">
+      <span class="avatar">{{ user.username[:1].upper() if user.username else 'A' }}</span>
+      <span class="user-name">{{ user.username or 'admin' }}<span class="app-version">v{{ app_version }}</span></span>
+      <button type="button" class="icon-btn" onclick="toggleTheme()" title="切换深浅主题" aria-label="切换主题">
+        <span class="theme-light-ico">{{ icon('moon', 17) }}</span>
+        <span class="theme-dark-ico">{{ icon('sun', 17) }}</span>
+      </button>
+      <a href="/logout" class="icon-btn danger" title="退出登录" aria-label="退出登录">{{ icon('logout', 17) }}</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% else %}
+  {% block plain %}{% endblock %}
+{% endif %}
+
+<script>
+  function toggleTheme() {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('misaka-theme', next);
+  }
+
+  function dismissToast(el) {
+    if (!el || el.classList.contains('leaving')) return;
+    el.classList.add('leaving');
+    setTimeout(function () { el.remove(); }, 300);
+  }
+  document.querySelectorAll('.toast[data-ttl]').forEach(function (t) {
+    setTimeout(function () { dismissToast(t); }, +t.dataset.ttl);
+  });
+
+  // 表单提交：data-confirm 二次确认；提交按钮进入加载态，防止重复提交（同步/探测/测试等耗时操作）
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (form.dataset.confirm && !confirm(form.dataset.confirm)) { e.preventDefault(); return; }
+    var btn = e.submitter || form.querySelector('[type=submit]');
+    if (btn && !form.hasAttribute('data-no-loading')) {
+      if (btn.dataset.loadingText) {
+        var label = btn.querySelector('span');
+        if (label) label.textContent = btn.dataset.loadingText;
+      }
+      setTimeout(function () { btn.classList.add('is-loading'); btn.disabled = true; }, 0);
+    }
+  });
+  // 浏览器后退恢复页面时，清除残留加载态
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) document.querySelectorAll('.is-loading').forEach(function (b) { b.classList.remove('is-loading'); b.disabled = false; });
+  });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

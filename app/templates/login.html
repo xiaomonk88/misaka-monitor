@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}登录{% endblock %}
+{% block plain %}
+<div class="login">
+  <div class="card login-card">
+    <div class="login-brand">
+      <span class="brand-mark">{{ icon('radar', 24) }}</span>
+      <h1>Misaka 监控</h1>
+    </div>
+
+    <form method="post" action="/login">
+      <div class="field">
+        <label for="username">账号</label>
+        <input type="text" id="username" name="username" placeholder="管理员用户名" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <div class="field" style="margin-top:1.5rem">
+        <button type="submit" class="btn btn-primary btn-lg btn-block"><span>登录</span>{{ icon('arrow-right', 16) }}</button>
+      </div>
+    </form>
+
+    {% if default_hint %}
+    <div class="login-hint">{{ icon('info', 14) }}<span>默认账号 <code>{{ default_hint }}</code>，首次登录后需修改密码</span></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

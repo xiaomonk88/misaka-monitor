@@ -1,0 +1,14 @@
+# 运行数据与密钥 —— 绝不提交
+.env
+data/
+*.db
+*.log
+cookies.txt
+
+# 本地环境
+.venv/
+__pycache__/
+*.pyc
+.claude/
+.idea/
+.vscode/

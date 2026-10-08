@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}设置{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>设置</h1>
+    <p class="sub">调度参数、通知提醒与账号安全</p>
+  </div>
+</div>
+
+<form method="post" action="/settings">
+  <div class="card">
+    <div class="card-head"><h2>常规与调度</h2></div>
+    <div class="setting-row">
+      <div><div class="label">展示时区</div><div class="desc">IANA 时区名，仅影响界面时间显示</div></div>
+      <div>
+        <input type="text" id="display_tz" name="display_tz" value="{{ general.display_tz }}" placeholder="Asia/Shanghai" list="tz-list">
+        <datalist id="tz-list">
+          {% for z in ['Asia/Shanghai', 'Asia/Hong_Kong', 'Asia/Tokyo', 'Asia/Singapore', 'UTC', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles'] %}<option value="{{ z }}">{% endfor %}
+        </datalist>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div><div class="label">目录同步周期（小时）</div><div class="desc">定时全量比对，发现新区域、新规格与价格变化</div></div>
+      <div><input type="number" id="catalog_sync_hours" name="catalog_sync_hours" min="0.1" step="0.1" value="{{ general.catalog_sync_hours }}"></div>
+    </div>
+    <div class="setting-row">
+      <div><div class="label">最低轮询间隔（秒）</div><div class="desc">所有任务轮询频率的下限，避免触发接口风控</div></div>
+      <div><input type="number" id="min_interval_seconds" name="min_interval_seconds" min="5" value="{{ general.min_interval_seconds }}"></div>
+    </div>
+    <div class="setting-row">
+      <div><div class="label">目标失效提醒</div><div class="desc">每次目录同步后检查启用中的任务：指定的套餐被下架时推送「目标失效」，重新上架时推送「目标恢复」，每次变化只通知一次</div></div>
+      <div>
+        <label class="switch"><input type="checkbox" name="notify_target_invalid" {{ 'checked' if notify_invalid }}><span class="track"></span><span>同步时检测并推送 Telegram</span></label>
+      </div>
+    </div>
+    <div class="card-foot">
+      <button type="submit" class="btn btn-primary">{{ icon('check', 15) }}<span>保存设置</span></button>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>账号安全</h2>
+      <div class="sub">修改登录用户名和密码，可只改其中一项；保存前需验证当前密码</div>
+    </div>
+  </div>
+  <form method="post" action="/settings/account" id="account-form">
+    <div class="setting-row">
+      <div><div class="label">用户名</div><div class="desc">当前：<code>{{ user.username }}</code></div></div>
+      <div><input type="text" id="acc_username" name="username" value="{{ user.username }}" autocomplete="username" required></div>
+    </div>
+    <div class="setting-row">
+      <div><div class="label">新密码</div><div class="desc">留空表示不修改密码</div></div>
+      <div class="fields">
+        <div><input type="password" id="new_pwd" name="new_password" minlength="6" autocomplete="new-password" placeholder="新密码，至少 6 位"></div>
+        <div><input type="password" id="confirm_pwd" name="confirm_password" autocomplete="new-password" placeholder="再次输入新密码"></div>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div><div class="label">当前密码<span class="req">*</span></div><div class="desc">用于确认是本人操作</div></div>
+      <div><input type="password" id="old_pwd" name="old_password" autocomplete="current-password" required></div>
+    </div>
+    <div class="card-foot">
+      <button type="submit" class="btn btn-primary">{{ icon('lock', 15) }}<span>保存账号修改</span></button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+
+  // 两次新密码不一致时阻止提交，避免往返服务器
+  var np = document.getElementById('new_pwd'), cp = document.getElementById('confirm_pwd');
+  function check() { cp.setCustomValidity((np.value || cp.value) && cp.value !== np.value ? '两次输入的新密码不一致' : ''); }
+  np.addEventListener('input', check); cp.addEventListener('input', check);
+})();
+</script>
+{% endblock %}

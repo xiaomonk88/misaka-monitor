@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}设置新密码{% endblock %}
+{% block plain %}
+<div class="login">
+  <div class="card login-card">
+    <span class="brand-mark">{{ icon('lock', 22) }}</span>
+    <h1>设置新密码</h1>
+    <p class="sub">当前账号仍在使用默认或已重置的密码。为了安全，请先设置新密码，完成后即可进入系统。</p>
+
+    <form method="post" action="/account/setup" id="setup-form">
+      <div class="field">
+        <label for="username">用户名</label>
+        <input type="text" id="username" name="username" value="{{ username or user.username }}" autocomplete="username" required>
+        <small>可保持不变，也可以顺便改成你习惯的用户名</small>
+      </div>
+      <div class="field">
+        <label for="new_pwd">新密码</label>
+        <input type="password" id="new_pwd" name="new_password" minlength="6" autocomplete="new-password" placeholder="至少 6 位，不能是 admin" required autofocus>
+      </div>
+      <div class="field">
+        <label for="confirm_pwd">确认新密码</label>
+        <input type="password" id="confirm_pwd" name="confirm_password" minlength="6" autocomplete="new-password" placeholder="再次输入新密码" required>
+      </div>
+      <div class="field" style="margin-top:1.5rem">
+        <button type="submit" class="btn btn-primary btn-lg btn-block"><span>保存并进入系统</span>{{ icon('arrow-right', 16) }}</button>
+      </div>
+    </form>
+
+    <div class="login-foot"><a href="/logout">退出登录</a></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var np = document.getElementById('new_pwd'), cp = document.getElementById('confirm_pwd');
+  function check() {
+    np.setCustomValidity(np.value === 'admin' ? '新密码不能是默认密码 admin' : '');
+    cp.setCustomValidity(cp.value && cp.value !== np.value ? '两次输入的新密码不一致' : '');
+  }
+  np.addEventListener('input', check); cp.addEventListener('input', check);
+})();
+</script>
+{% endblock %}

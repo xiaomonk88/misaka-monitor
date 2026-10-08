@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}产品目录{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>产品目录</h1>
+    <p class="sub">
+      {{ totals.regions }} 个区域 · {{ totals.plans }} 款套餐 · <span style="color:var(--ok)">{{ totals.avail }} 有货</span>
+      {% if last_sync %} · 同步于 {{ last_sync|dt('%m-%d %H:%M') }}{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/catalog/refresh" class="inline">
+      <button type="submit" class="btn" data-loading-text="同步中…">{{ icon('refresh', 15) }}<span>同步目录</span></button>
+    </form>
+  </div>
+</div>
+
+{% if totals.plans == 0 %}
+<div class="card">
+  <div class="empty">
+    <div class="empty-icon">{{ icon('box', 24) }}</div>
+    <h3>尚未同步产品数据</h3>
+    <p>从 Misaka API 拉取全部区域、套餐与库存快照，首次同步会建立变化比对基线。</p>
+    <div class="actions">
+      <form method="post" action="/catalog/refresh" class="inline">
+        <button type="submit" class="btn btn-primary" data-loading-text="同步中…">{{ icon('refresh', 15) }}<span>立即同步</span></button>
+      </form>
+    </div>
+  </div>
+</div>
+{% else %}
+
+<div class="catalog">
+  <aside class="card region-panel">
+    <form method="get" action="/catalog" class="panel-search" data-no-loading>
+      <div class="input-group">
+        {{ icon('search', 15) }}
+        <input type="search" name="q" value="{{ q }}" id="region-filter" placeholder="搜索区域 / 国家 / 代码" autocomplete="off">
+      </div>
+    </form>
+    <div class="region-list" id="region-list">
+      {% for cont_name, rs in groups %}
+      <div data-cont>
+        <div class="cont-title"><span>{{ cont_name }}</span><span>{{ rs|length }}</span></div>
+        {% for r in rs %}
+        {% set a = avail_by_region.get(r.slug, 0) %}
+        <a class="region-item" data-region="{{ r.slug }}" data-avail="{{ a }}"
+           data-search="{{ (r.slug ~ ' ' ~ r.name ~ ' ' ~ r.country ~ ' ' ~ cont_name)|lower }}"
+           hx-get="/catalog/r/{{ r.slug }}" hx-target="#region-detail" hx-swap="innerHTML">
+          <span class="status-dot {{ 'ok' if a > 0 else 'no' }}"></span>
+          <span class="name">{{ r.name }}</span>
+          <span class="cnt{{ ' has' if a > 0 }}">{{ a }}/{{ total_by_region.get(r.slug, 0) }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      <div class="empty" id="region-empty" {{ 'hidden' if groups }} style="padding:2rem 1rem">
+        <p>没有匹配的区域</p>
+      </div>
+    </div>
+  </aside>
+
+  <section id="region-detail" class="card detail-panel">
+    <div class="empty" style="padding:6rem 1.5rem">
+      <div class="empty-icon">{{ icon('globe', 24) }}</div>
+      <h3>选择一个区域</h3>
+      <p>查看该区域的套餐规格、价格与实时库存，勾选后即可创建监控。</p>
+    </div>
+  </section>
+</div>
+
+<form method="post" action="/tasks/new" class="tray is-empty" id="tray" data-no-loading>
+  <span class="count" id="tray-count">已选 0 项</span>
+  <span class="list" id="tray-list"></span>
+  <div id="tray-inputs" hidden></div>
+  <button type="button" class="btn btn-ghost btn-sm" id="tray-clear">清空</button>
+  <button type="submit" class="btn btn-primary btn-sm"><span>创建监控任务</span>{{ icon('arrow-right', 14) }}</button>
+</form>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var list = document.getElementById('region-list');
+  if (!list) return;
+
+  /* ---- 区域选择：高亮 + 记住上次查看 ---- */
+  var REGION_KEY = 'misaka-region';
+  function setActive(el) {
+    list.querySelectorAll('.region-item.active').forEach(function (x) { x.classList.remove('active'); });
+    el.classList.add('active');
+    sessionStorage.setItem(REGION_KEY, el.dataset.region);
+  }
+  list.addEventListener('click', function (e) {
+    var item = e.target.closest('.region-item');
+    if (item) setActive(item);
+  });
+
+  /* ---- 区域即时筛选 ---- */
+  var filter = document.getElementById('region-filter');
+  function applyFilter() {
+    var q = filter.value.trim().toLowerCase(), any = false;
+    list.querySelectorAll('[data-cont]').forEach(function (g) {
+      var shown = 0;
+      g.querySelectorAll('.region-item').forEach(function (it) {
+        var hit = !q || it.dataset.search.indexOf(q) !== -1;
+        it.hidden = !hit; if (hit) shown++;
+      });
+      g.hidden = shown === 0; if (shown) any = true;
+    });
+    document.getElementById('region-empty').hidden = any;
+  }
+  filter.addEventListener('input', applyFilter);
+
+  /* ---- 跨区域 / 跨分类的已选集合（会话内保持） ---- */
+  var PICK_KEY = 'misaka-picks', picks;
+  try { picks = JSON.parse(sessionStorage.getItem(PICK_KEY)) || {}; } catch (e) { picks = {}; }
+  var tray = document.getElementById('tray');
+
+  function render() {
+    var keys = Object.keys(picks);
+    document.getElementById('tray-count').textContent = '已选 ' + keys.length + ' 项';
+    document.getElementById('tray-list').textContent = keys.map(function (k) { return picks[k]; }).join('、');
+    var box = document.getElementById('tray-inputs');
+    box.innerHTML = '';
+    keys.forEach(function (k) {
+      var i = document.createElement('input');
+      i.type = 'hidden'; i.name = 'target'; i.value = k; box.appendChild(i);
+    });
+    tray.classList.toggle('is-empty', keys.length === 0);
+
+    var boxes = document.querySelectorAll('#region-detail [data-pick]');
+    boxes.forEach(function (c) {
+      c.checked = !!picks[c.value];
+      var row = c.closest('tr'); if (row) row.classList.toggle('is-picked', c.checked);
+    });
+    var all = document.getElementById('pick-all');
+    if (all) {
+      var rows = document.querySelectorAll('#region-detail tbody [data-pick]');
+      var n = Array.prototype.filter.call(rows, function (c) { return c.checked; }).length;
+      all.checked = rows.length > 0 && n === rows.length;
+      all.indeterminate = n > 0 && n < rows.length;
+    }
+  }
+  function save() { sessionStorage.setItem(PICK_KEY, JSON.stringify(picks)); render(); }
+  function setPick(c, on) { if (on) picks[c.value] = c.dataset.label; else delete picks[c.value]; }
+
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches('[data-pick]')) { setPick(t, t.checked); save(); }
+    else if (t.id === 'pick-all') {
+      document.querySelectorAll('#region-detail tbody [data-pick]').forEach(function (c) { setPick(c, t.checked); });
+      save();
+    }
+  });
+  document.getElementById('tray-clear').addEventListener('click', function () { picks = {}; save(); });
+  document.body.addEventListener('htmx:afterSwap', render);
+
+  /* ---- 初始化 ---- */
+  document.addEventListener('DOMContentLoaded', function () {
+    if (filter.value) applyFilter();
+    render();
+    var saved = sessionStorage.getItem(REGION_KEY);
+    var el = (saved && list.querySelector('.region-item[data-region="' + saved + '"]:not([hidden])'))
+          || list.querySelector('.region-item:not([hidden])[data-avail]:not([data-avail="0"])')
+          || list.querySelector('.region-item:not([hidden])');
+    if (el) setTimeout(function () { setActive(el); htmx.ajax('GET', el.getAttribute('hx-get'), '#region-detail'); }, 0);
+  });
+})();
+</script>
+{% endblock %}

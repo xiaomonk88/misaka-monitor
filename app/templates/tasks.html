@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}监控任务{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>监控任务</h1>
+    <p class="sub">{{ rows|length }} 个任务 · {{ rows|selectattr('task.enabled')|list|length }} 个运行中</p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/tasks/new" class="inline" data-no-loading>
+      <input type="hidden" name="target" value="*|*">
+      <button type="submit" class="btn" title="监控全站新区域 / 新规格上线">{{ icon('globe', 15) }}<span>全站上新监控</span></button>
+    </form>
+    <form method="post" action="/tasks/new" class="inline" data-no-loading>
+      <button type="submit" class="btn">{{ icon('edit', 15) }}<span>手动创建</span></button>
+    </form>
+    <a href="/catalog" class="btn btn-primary">{{ icon('plus', 15) }}<span>从目录选择</span></a>
+  </div>
+</div>
+
+{% if not rows %}
+<div class="card">
+  <div class="empty">
+    <div class="empty-icon">{{ icon('tasks', 24) }}</div>
+    <h3>还没有监控任务</h3>
+    <p>在产品目录中勾选想要的套餐（可跨区域多选），即可一键创建监控；也可以创建全站上新监控。</p>
+    <div class="actions">
+      <a href="/catalog" class="btn btn-primary">{{ icon('catalog', 15) }}<span>去产品目录</span></a>
+    </div>
+  </div>
+</div>
+{% else %}
+
+<div class="task-list">
+  {% for r in rows %}
+  {% set t = r.task %}
+  {% set avail = r.status|selectattr('available')|list|length %}
+  <div class="card task{{ ' off' if not t.enabled }}">
+    <div style="min-width:0">
+      <div class="task-name">
+        <a href="/tasks/{{ t.id }}/edit">{{ t.name }}</a>
+        {% if t.enabled %}
+          <span class="badge ok live"><i class="dot"></i>运行中</span>
+        {% else %}
+          <span class="badge">已停用</span>
+        {% endif %}
+        {% if t.auto_order %}<span class="badge accent">自动下单</span>{% endif %}
+      </div>
+      <div class="task-status" id="task-status-{{ t.id }}" title="{{ t.last_status or '' }}">{{ t.last_status or '等待首次轮询' }}</div>
+    </div>
+
+    <div class="kv">
+      <div class="k">目标 · 轮询</div>
+      <div class="v">
+        <span class="strong">{{ r.targets }}</span> 个
+        {% if r.status %}<span class="badge {{ 'ok' if avail else '' }}">{{ avail }} 有货</span>{% endif %}
+        <span class="dim">·</span><span class="mono">{{ t.interval_seconds }}s</span>
+      </div>
+    </div>
+
+    <div class="kv">
+      <div class="k">通知 · 最近探测</div>
+      <div class="v">
+        {% if r.channels %}
+          {% for ch in r.channels %}<span class="badge info">{{ ch }}</span>{% endfor %}
+        {% else %}
+          <span class="dim">未绑定渠道</span>
+        {% endif %}
+      </div>
+      <div class="v mono dim" style="font-size:.76rem"><span id="task-lastrun-{{ t.id }}">{{ t.last_run_at|dt }}</span> · {{ t.event_types|length }} 类事件</div>
+    </div>
+
+    <div class="task-actions">
+      <form method="post" action="/tasks/{{ t.id }}/run" class="inline"
+            hx-post="/tasks/{{ t.id }}/run" hx-target="#probe-{{ t.id }}" hx-swap="innerHTML">
+        <button class="btn btn-sm" type="submit" title="立即探测，在下方显示结果并推送当前状态" data-loading-text="探测中…">{{ icon('play', 13) }}<span>探测</span></button>
+      </form>
+      <form method="post" action="/tasks/{{ t.id }}/toggle" class="inline">
+        <button class="btn btn-sm" type="submit" title="{{ '停用任务' if t.enabled else '启用任务（将立即运行一次）' }}"><span>{{ '停用' if t.enabled else '启用' }}</span></button>
+      </form>
+      <a href="/logs?src=task&task={{ t.id }}" class="btn btn-ghost btn-sm btn-icon" title="查看该任务的事件日志">{{ icon('logs', 15) }}</a>
+      <a href="/tasks/{{ t.id }}/edit" class="btn btn-ghost btn-sm btn-icon" title="编辑">{{ icon('edit', 15) }}</a>
+      <form method="post" action="/tasks/{{ t.id }}/delete" class="inline" data-confirm="确定删除任务「{{ t.name }}」？此操作不可撤回。">
+        <button class="btn btn-danger-ghost btn-sm btn-icon" type="submit" title="删除">{{ icon('trash', 15) }}</button>
+      </form>
+    </div>
+
+    <div class="task-probe" id="probe-{{ t.id }}"></div>
+
+    {% if r.status %}
+    <details class="task-targets">
+      <summary>{{ icon('chevron-right', 13) }}查看 {{ r.status|length }} 个目标的库存</summary>
+      <div class="target-chips">
+        {% for s in r.status %}
+        <span class="target-chip" title="{{ s.label }}{{ ' · ' ~ s.detail if s.detail }}">
+          {% if s.available is none %}<span class="status-dot"></span>
+          {% elif s.available %}<span class="status-dot ok"></span>
+          {% else %}<span class="status-dot no"></span>{% endif %}
+          {{ s.region|lower }}/{{ s.slug }}{% if s.detail %} <span class="dim">{{ s.detail }}</span>{% elif s.available is none %} <span class="dim">{{ s.label }}</span>{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // 内联探测完成后恢复按钮
+  document.body.addEventListener('htmx:afterRequest', function (e) {
+    var btn = e.detail.elt.querySelector && e.detail.elt.querySelector('.is-loading');
+    if (!btn) return;
+    btn.classList.remove('is-loading'); btn.disabled = false;
+    var label = btn.querySelector('span'); if (label) label.textContent = '探测';
+    if (e.detail.failed) {
+      document.querySelector(e.detail.elt.getAttribute('hx-target')).innerHTML =
+        '<div class="probe"><div class="probe-note no">探测请求失败（HTTP ' + e.detail.xhr.status + '），请稍后重试。</div></div>';
+    }
+  });
+</script>
+{% endblock %}

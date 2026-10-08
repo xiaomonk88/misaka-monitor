@@ -1,0 +1,22 @@
+# Misaka 监控 · Docker Compose
+# 一键安装脚本会自动下载本文件；也可以手动：cp .env.example .env && docker compose up -d
+services:
+  misaka-monitor:
+    # 镜像由 GitHub Actions 构建；MISAKA_VERSION 可在 .env 中锁定版本（如 1.0.0），默认 latest
+    image: ghcr.io/xiaomonk88/misaka-monitor:${MISAKA_VERSION:-latest}
+    container_name: misaka-monitor
+    restart: unless-stopped
+    ports:
+      - "${MISAKA_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      # 容器内固定值，覆盖 .env 中的本地开发值
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -1,0 +1,79 @@
+{% from "_icons.html" import icon %}
+<div class="probe">
+  <div class="probe-head">
+    <div class="probe-title">
+      {{ icon('activity', 15) }}
+      <span class="strong">探测结果</span>
+      {% if rows %}
+        <span class="badge {{ 'ok' if avail else '' }}">{{ avail }}/{{ counted }} 有货</span>
+        {% set miss = rows|selectattr('state', 'equalto', 'missing')|list|length %}
+        {% if miss %}<span class="badge warn">{{ miss }} 个未返回</span>{% endif %}
+        {% if hits %}<span class="badge warn">命中 {{ hits }} 个事件</span>{% endif %}
+        {% if pushed %}<span class="badge info">已推送状态到 Telegram</span>{% endif %}
+        <span class="dim mono" style="font-size:.75rem">{{ task.last_run_at|dt('%H:%M:%S') if task else '' }}</span>
+      {% endif %}
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm btn-icon" title="收起" onclick="this.closest('.probe').remove()">{{ icon('x', 14) }}</button>
+  </div>
+
+  {% for err in errors %}
+  <div class="probe-note no">{{ icon('alert', 14) }}{{ err }}</div>
+  {% endfor %}
+
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>区域</th>
+          <th>产品</th>
+          <th>分类</th>
+          <th class="num">vCPU</th>
+          <th class="num">内存</th>
+          <th class="num">存储</th>
+          <th class="num">流量</th>
+          <th class="num">月付</th>
+          <th>库存</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr{% if r.state in ('missing', 'failed', 'global') %} class="row-muted"{% endif %}>
+          <td><code>{{ r.region }}</code></td>
+          <td>
+            <div class="strong">{{ r.name }}</div>
+            <div class="dim mono" style="font-size:.74rem">{{ r.slug }}{% if r.nvme %} · NVMe{% endif %}</div>
+          </td>
+          <td class="muted" style="font-size:.8rem">{{ r.category or '—' }}</td>
+          <td class="num mono">{{ r.vcores if r.vcores is not none else '—' }}</td>
+          <td class="num mono">{{ r.memory|mem if r.memory is not none else '—' }}</td>
+          <td class="num mono">{{ r.disk|gb if r.disk is not none else '—' }}</td>
+          <td class="num mono">{{ r.transfer|tf if r.transfer is not none else '—' }}</td>
+          <td class="num">{% if r.price is not none %}<span class="price">${{ '%.0f'|format(r.price) }}<small>/月</small></span>{% else %}—{% endif %}</td>
+          <td>
+            {% if r.state == 'ok' %}<span class="badge ok"><i class="dot"></i>有货</span>
+            {% elif r.state == 'no' %}<span class="badge no"><i class="dot"></i>缺货</span>
+            {% elif r.state == 'missing' %}<span class="badge warn" title="Misaka API 本次没有返回该套餐，通常表示已下架或改名">未返回</span>
+            {% elif r.state == 'failed' %}<span class="badge no" title="该区域接口请求失败">抓取失败</span>
+            {% else %}<span class="badge" title="全站通配由目录同步负责检测新区域 / 新规格">目录同步负责</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if rows|selectattr('state', 'equalto', 'missing')|list %}
+  <div class="probe-note">{{ icon('info', 14) }}「未返回」表示 Misaka 接口这次没有列出该套餐，通常是已下架。可在编辑任务中移除它。</div>
+  {% endif %}
+  {% elif task and not task.enabled %}
+  <div class="probe-note">{{ icon('info', 14) }}任务已停用，请先启用后再探测。</div>
+  {% elif not errors %}
+  <div class="probe-note">{{ icon('info', 14) }}该任务没有监控目标。</div>
+  {% endif %}
+</div>
+
+{% if task %}
+{# 带外更新卡片上的状态行与最近探测时间 #}
+<div class="task-status" id="task-status-{{ task.id }}" hx-swap-oob="true" title="{{ task.last_status or '' }}">{{ task.last_status or '等待首次轮询' }}</div>
+<span id="task-lastrun-{{ task.id }}" hx-swap-oob="true">{{ task.last_run_at|dt }}</span>
+{% endif %}

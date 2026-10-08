@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, event_badge %}
+{% block title %}事件日志{% endblock %}
+{% block content %}
+{% set params = {'src': src, 'cat': cat, 'type': type, 'product': product, 'q': q, 'task': task or '', 'view': view} %}
+{% set is_task = src == 'task' %}
+{% set filtered = cat or type or product or q or task %}
+
+<div class="page-head">
+  <div>
+    <h1>事件日志</h1>
+    <p class="sub">监控任务的事件与目录同步的变化分开记录；记录哪些类型可在 <a href="/settings">设置</a> 中调整</p>
+  </div>
+  <div class="actions">
+    <button type="button" class="btn" onclick="document.getElementById('log-settings').showModal()" title="选择同步日志 / 监控事件记录哪些类型">{{ icon('settings', 15) }}<span>记录设置</span></button>
+    <a href="/logs/file" class="btn" target="_blank" title="查看最近 200 行文件日志">{{ icon('eye', 15) }}<span>文件日志</span></a>
+    <a href="/logs/export.csv?{{ params|urlencode }}" class="btn" title="按当前页签与筛选导出（最多 5000 条）">{{ icon('download', 15) }}<span>导出 CSV</span></a>
+    <details class="menu">
+      <summary class="btn">{{ icon('trash', 15) }}<span>清空</span>{{ icon('chevron-down', 14) }}</summary>
+      <div class="menu-panel">
+        <form method="post" action="/logs/clear" data-confirm="确定清空全部「监控事件」（{{ src_counts.task }} 条）？此操作不可撤回。">
+          <input type="hidden" name="scope" value="task">
+          <button type="submit" class="menu-item"><span>清空监控事件</span><span class="dim">{{ src_counts.task }}</span></button>
+        </form>
+        <form method="post" action="/logs/clear" data-confirm="确定清空全部「同步日志」（{{ src_counts.sync }} 条）？此操作不可撤回。">
+          <input type="hidden" name="scope" value="sync">
+          <button type="submit" class="menu-item"><span>清空同步日志</span><span class="dim">{{ src_counts.sync }}</span></button>
+        </form>
+        <div class="menu-sep"></div>
+        <form method="post" action="/logs/clear" data-confirm="确定清空全部事件日志，并清空文件日志 events.log？此操作不可撤回。">
+          <input type="hidden" name="scope" value="all">
+          <button type="submit" class="menu-item danger"><span>全部清空（含文件日志）</span></button>
+        </form>
+        <a href="/logs/file/download" class="menu-item"><span>下载文件日志</span>{{ icon('file', 14) }}</a>
+      </div>
+    </details>
+  </div>
+</div>
+
+<div class="card">
+  <nav class="tabs">
+    {% for key, name in sources.items() %}
+    <a class="tab{{ ' active' if src == key }}" href="/logs?src={{ key }}&view={{ view }}">
+      {{ icon('tasks' if key == 'task' else 'refresh', 14) }}{{ name }} <span class="n">{{ src_counts[key] }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+
+  <div class="filter-stack">
+    {# 第一行：分类 + 视图切换 #}
+    <div class="filter-row">
+      <div class="seg">
+        <a class="seg-item{{ ' active' if not cat }}" href="/logs?{{ dict(params, cat='', type='', page=0)|urlencode }}">全部 <span class="n">{{ cat_counts[''] }}</span></a>
+        {% for key, name, _ in categories %}
+        <a class="seg-item{{ ' active' if cat == key }}" href="/logs?{{ dict(params, cat=key, type='', page=0)|urlencode }}">{{ name }} <span class="n">{{ cat_counts[key] }}</span></a>
+        {% endfor %}
+      </div>
+      <div class="seg" style="margin-left:auto">
+        <a class="seg-item{{ ' active' if view == 'list' }}" href="/logs?{{ dict(params, view='list', page=0)|urlencode }}">{{ icon('logs', 14) }}事件列表</a>
+        <a class="seg-item{{ ' active' if view == 'product' }}" href="/logs?{{ dict(params, view='product', product='', page=0)|urlencode }}">{{ icon('box', 14) }}按产品</a>
+      </div>
+    </div>
+
+    {# 第二行：具体事件类型 #}
+    {% if type_counts %}
+    <div class="filter-row chips-row">
+      <span class="row-label">事件</span>
+      <a class="chip{{ ' active' if not type }}" href="/logs?{{ dict(params, type='', page=0)|urlencode }}">全部类型</a>
+      {% for t, n in type_counts.items() %}
+      <a class="chip{{ ' active' if type == t }}{{ ' is-zero' if not n }}" href="/logs?{{ dict(params, type=t, page=0)|urlencode }}">{{ label(t) }} <span class="n">{{ n }}</span></a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# 第三行：任务 / 关键词 #}
+    <form method="get" action="/logs" class="filter-row" data-no-loading>
+      {% for k in ['src', 'cat', 'type', 'product', 'view'] %}<input type="hidden" name="{{ k }}" value="{{ params[k] }}">{% endfor %}
+      {% if is_task %}
+      <select name="task" onchange="this.form.submit()" aria-label="监控任务" style="width:200px;height:36px">
+        <option value="">全部任务</option>
+        {% for t in tasks %}<option value="{{ t.id }}" {{ 'selected' if task == t.id }}>{{ t.name }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      <div class="input-group" style="flex:1;min-width:220px;max-width:420px">
+        {{ icon('search', 15) }}
+        <input type="search" name="q" value="{{ q }}" placeholder="区域 / 套餐 slug / 关键词，回车搜索" style="height:36px">
+      </div>
+      {% if filtered %}
+      <a href="/logs?src={{ src }}&view={{ view }}" class="btn btn-ghost btn-sm">{{ icon('x', 14) }}<span>清除筛选</span></a>
+      {% endif %}
+    </form>
+  </div>
+
+  {# 选中单个产品：概览 #}
+  {% if prod_summary %}
+  <div class="product-focus">
+    <div>
+      <div class="strong" style="font-size:1rem">{{ prod_summary.name }}</div>
+      <div class="muted mono" style="font-size:.76rem;margin-top:.15rem">{{ prod_summary.region }}{% if prod_summary.slug %} / {{ prod_summary.slug }}{% endif %}
+        {% if prod_summary.first %} · 首次 {{ prod_summary.first|dt('%m-%d %H:%M') }} · 最近 {{ prod_summary.last|dt('%m-%d %H:%M') }}{% endif %}</div>
+    </div>
+    <div class="actions">
+      {% for t, n in prod_summary.types.items() %}{{ event_badge(t, label(t) ~ ' ' ~ n) }}{% endfor %}
+      <a href="/logs?{{ dict(params, product='', page=0)|urlencode }}" class="btn btn-ghost btn-sm">{{ icon('x', 14) }}<span>取消产品筛选</span></a>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="filter-hint">
+    {% if is_task %}
+      {{ icon('info', 13) }}监控任务轮询（或目录同步命中任务订阅）产生的事件，每条都归属一个任务，可查看推送结果。
+    {% else %}
+      {{ icon('info', 13) }}全量目录同步发现的全站变化，不归属任何任务，仅用于留档；不会因此推送通知。
+    {% endif %}
+    {% if view == 'product' %}点击产品查看它的事件时间线。{% else %}点击「区域 / 套餐」可只看该产品。{% endif %}
+  </div>
+
+  {% if view == 'product' %}
+    {% if not groups %}
+    <div class="empty"><div class="empty-icon">{{ icon('box', 22) }}</div><h3>没有匹配的产品</h3><p>当前筛选条件下没有任何事件。</p></div>
+    {% else %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>产品 <span class="dim" style="font-weight:400">（{{ groups|length }} 个）</span></th>
+            <th style="width:200px">区域 / 套餐</th>
+            <th>事件统计</th>
+            <th class="num" style="width:70px">合计</th>
+            <th style="width:150px">最近事件</th>
+            <th style="width:90px"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for g in groups %}
+          {% set href = '/logs?' ~ dict(params, view='list', product=g.key, page=0)|urlencode %}
+          <tr class="row-link" onclick="location.href='{{ href }}'">
+            <td><a href="{{ href }}" class="strong" style="font-weight:600">{{ g.name }}</a></td>
+            <td><code>{{ g.region }}</code>{% if g.slug %} <span class="mono muted">{{ g.slug }}</span>{% endif %}</td>
+            <td><div class="actions" style="gap:.35rem">{% for t, n in g.types.items() %}{{ event_badge(t, label(t) ~ ' ' ~ n) }}{% endfor %}</div></td>
+            <td class="num mono strong">{{ g.total }}</td>
+            <td class="time">{{ g.last|dt('%m-%d %H:%M:%S') }}</td>
+            <td><a href="{{ href }}" class="btn btn-ghost btn-sm"><span>时间线</span>{{ icon('chevron-right', 14) }}</a></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  {% elif not rows %}
+  <div class="empty">
+    <div class="empty-icon">{{ icon('search', 22) }}</div>
+    <h3>{{ '没有匹配的记录' if filtered else ('暂无监控事件' if is_task else '暂无同步日志') }}</h3>
+    <p>{{ '尝试调整筛选条件。' if filtered else ('启用的监控任务检测到补货、售罄等变化后会记录在这里。' if is_task else '目录同步检测到价格、规格或上下架变化后会记录在这里。') }}</p>
+  </div>
+  {% else %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:160px">时间</th>
+          <th style="width:120px">类型</th>
+          {% if is_task %}<th style="width:170px">任务</th>{% endif %}
+          <th style="width:230px">{{ '产品' if product else '区域 / 套餐' }}</th>
+          <th style="min-width:240px">详情</th>
+          {% if is_task %}<th style="width:90px">推送</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for e in rows %}
+        {% set pkey = (e.region, e.plan_slug or '') %}
+        <tr>
+          <td class="time">{{ e.ts|dt }}</td>
+          <td>{{ event_badge(e.type, label(e.type)) }}</td>
+          {% if is_task %}
+          <td>
+            {% if e.task_id in task_names %}
+              <a href="/logs?{{ dict(params, task=e.task_id, page=0)|urlencode }}" class="strong" style="font-weight:500" title="只看该任务">{{ task_names[e.task_id] }}</a>
+            {% else %}<span class="dim">已删除的任务</span>{% endif %}
+          </td>
+          {% endif %}
+          <td>
+            <a href="/logs?{{ dict(params, product=e.region ~ '|' ~ (e.plan_slug or ''), page=0)|urlencode }}" class="product-link" title="只看「{{ names.get(pkey, '') }}」的事件">
+              <span class="strong" style="font-weight:500">{{ names.get(pkey, e.plan_slug) }}</span>
+              <span class="mono dim" style="font-size:.74rem">{{ e.region }}{% if e.plan_slug %} / {{ e.plan_slug }}{% endif %}</span>
+            </a>
+          </td>
+          <td>{{ e.detail }}</td>
+          {% if is_task %}
+          <td>{% if e.notified %}<span class="badge ok">已推送</span>{% else %}<span class="badge">未推送</span>{% endif %}</td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pager">
+    <span>第 <b class="strong">{{ page + 1 }}</b> 页 · 每页 50 条</span>
+    <div class="actions">
+      <a href="/logs?{{ dict(params, page=page - 1)|urlencode }}" class="btn btn-sm{{ ' is-disabled' if page <= 0 }}">{{ icon('chevron-left', 14) }}<span>上一页</span></a>
+      <a href="/logs?{{ dict(params, page=page + 1)|urlencode }}" class="btn btn-sm{{ ' is-disabled' if not has_next }}"><span>下一页</span>{{ icon('chevron-right', 14) }}</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# 日志记录设置弹窗 #}
+{% macro type_choices(src) %}
+  {% set sel = log_types[src] %}
+  <div class="group-label">库存变化</div>
+  <div class="choice-grid">
+    {% for key, lbl in event_options if key in stock_types %}
+    <label class="choice"><input type="checkbox" name="{{ src }}_types" value="{{ key }}" {{ 'checked' if key in sel }}><span>{{ lbl }}</span></label>
+    {% endfor %}
+  </div>
+  <div class="group-label" style="margin-top:.9rem">目录变化</div>
+  <div class="choice-grid">
+    {% for key, lbl in event_options if key not in stock_types %}
+    <label class="choice"><input type="checkbox" name="{{ src }}_types" value="{{ key }}" {{ 'checked' if key in sel }}><span>{{ lbl }}</span></label>
+    {% endfor %}
+  </div>
+{% endmacro %}
+<dialog class="modal" id="log-settings" aria-labelledby="log-settings-title">
+  <form method="post" action="/logs/settings">
+    <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query }}">
+    <div class="modal-head">
+      <div>
+        <h2 id="log-settings-title">日志记录设置</h2>
+        <div class="sub">按来源选择要记录的事件类型；只影响日志，不影响 Telegram 推送（推送按各任务的订阅事件）</div>
+      </div>
+      <button type="button" class="icon-btn" aria-label="关闭" onclick="this.closest('dialog').close()">{{ icon('x', 16) }}</button>
+    </div>
+    <div class="modal-body">
+      <div class="setting-row">
+        <div>
+          <div class="label">同步日志</div>
+          <div class="desc">全量目录同步发现的全站变化。建议记录价格、规格与上下架，库存变化交给监控任务</div>
+          <div class="chips"><button type="button" class="chip" data-preset="sync" data-types="price_change,spec_change,new_plan,removed_plan,new_region,removed_region,region_availability">推荐</button><button type="button" class="chip" data-preset="sync" data-types="all">全选</button><button type="button" class="chip" data-preset="sync" data-types="">全不选</button></div>
+        </div>
+        <div>{{ type_choices('sync') }}</div>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="label">监控事件</div>
+          <div class="desc">各监控任务命中订阅后产生的事件。只会记录任务本身订阅了的类型，这里可再收窄；「目标失效 / 恢复」提醒总是记录</div>
+          <div class="chips"><button type="button" class="chip" data-preset="task" data-types="restock,sold_out">推荐</button><button type="button" class="chip" data-preset="task" data-types="all">全选</button><button type="button" class="chip" data-preset="task" data-types="">全不选</button></div>
+        </div>
+        <div>{{ type_choices('task') }}</div>
+      </div>
+      <div class="setting-row">
+        <div><div class="label">写入文件日志</div><div class="desc">把上面记录的事件同时写入 data/logs/events.log</div></div>
+        <div>
+          <label class="switch"><input type="checkbox" name="log_enabled" {{ 'checked' if file_log }}><span class="track"></span><span>同时写入文件</span></label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="muted" style="font-size:.78rem;margin-right:auto">只对之后的记录生效，已有日志不变</span>
+      <button type="button" class="btn btn-ghost" onclick="this.closest('dialog').close()">取消</button>
+      <button type="submit" class="btn btn-primary">{{ icon('check', 15) }}<span>保存</span></button>
+    </div>
+  </form>
+</dialog>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // 记录设置：快捷预设；点击遮罩关闭
+  document.querySelectorAll('[data-preset]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var want = b.dataset.types === 'all' ? null : b.dataset.types.split(',');
+      document.querySelectorAll('#log-settings input[name="' + b.dataset.preset + '_types"]').forEach(function (c) {
+        c.checked = want === null || want.indexOf(c.value) !== -1;
+      });
+    });
+  });
+  var dlg = document.getElementById('log-settings');
+  dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+
+  // 点击菜单外部时收起「清空」菜单
+  document.addEventListener('click', function (e) {
+    document.querySelectorAll('details.menu[open]').forEach(function (m) { if (!m.contains(e.target)) m.open = false; });
+  });
+</script>
+{% endblock %}
